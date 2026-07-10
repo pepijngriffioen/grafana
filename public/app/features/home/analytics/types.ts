@@ -25,6 +25,8 @@ export interface AlertsCardClicked extends EventProperty {
   placement: 'list' | 'empty_state' | 'footer';
   /** Canonical severity of the clicked alert (alert_detail only). */
   severity?: string;
+  /** Milliseconds between the card's data becoming visible and this click. Absent if the card never finished loading. */
+  ms_since_load?: number;
 }
 
 export interface IncidentsCardClicked extends EventProperty {

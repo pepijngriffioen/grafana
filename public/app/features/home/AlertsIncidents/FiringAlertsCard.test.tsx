@@ -362,6 +362,7 @@ describe('FiringAlertsCard', () => {
         action: 'alert_detail',
         placement: 'list',
         severity: 'critical',
+        ms_since_load: expect.any(Number),
       });
     });
 
@@ -382,6 +383,7 @@ describe('FiringAlertsCard', () => {
       expect(jest.mocked(alertsCardClicked)).toHaveBeenCalledWith({
         action: 'create_rule',
         placement: 'empty_state',
+        ms_since_load: expect.any(Number),
       });
     });
 
@@ -401,12 +403,14 @@ describe('FiringAlertsCard', () => {
       expect(jest.mocked(alertsCardClicked)).toHaveBeenCalledWith({
         action: 'create_rule',
         placement: 'footer',
+        ms_since_load: expect.any(Number),
       });
 
       await user.click(screen.getByRole('link', { name: /view all firing alerts/i }));
       expect(jest.mocked(alertsCardClicked)).toHaveBeenCalledWith({
         action: 'view_all_alerts',
         placement: 'footer',
+        ms_since_load: expect.any(Number),
       });
     });
 
@@ -421,6 +425,7 @@ describe('FiringAlertsCard', () => {
       expect(jest.mocked(alertsCardClicked)).toHaveBeenCalledWith({
         action: 'view_all_rules',
         placement: 'footer',
+        ms_since_load: expect.any(Number),
       });
     });
   });

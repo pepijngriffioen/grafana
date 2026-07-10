@@ -203,7 +203,7 @@ export class GrafanaApp {
 
         // Eagerly import journey wirings - these only use onInteraction,
         // no heavy feature-level imports
-        await Promise.all([import('./core/journeys/searchToResource')]);
+        await Promise.all([import('./core/journeys/searchToResource'), import('./core/journeys/homeToAlertInsight')]);
 
         // Warn about registry entries that have no start trigger wired up
         registry.warnUnregistered();

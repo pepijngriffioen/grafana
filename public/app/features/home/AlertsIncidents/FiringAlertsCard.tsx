@@ -1,6 +1,6 @@
 import { skipToken } from '@reduxjs/toolkit/query';
 import { escapeRegExp } from 'lodash';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useAsync } from 'react-use';
 
 import { t, Trans } from '@grafana/i18n';
@@ -17,6 +17,7 @@ import { AccessControlAction } from 'app/types/accessControl';
 import { type Team } from 'app/types/teams';
 
 import { alertsCardClicked } from '../analytics/main';
+import { type AlertsCardClicked } from '../analytics/types';
 
 import { SummaryCard, SummaryCardAge, SummaryCardTitle } from './SummaryCard';
 import { HOME_CARD_MAX_ITEMS } from './constants';
@@ -107,6 +108,21 @@ function FiringAlertsCardInner() {
 
   const loading = teamsLoading || alertsLoading;
 
+  // The card finishes loading at roughly homepage load, so its own load moment anchors the dwell
+  // window for the home_to_alert_insight journey. Record it once, when loading first flips false.
+  const loadedAtRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!loading && loadedAtRef.current === undefined) {
+      loadedAtRef.current = Date.now();
+    }
+  }, [loading]);
+
+  // Route every card click through here so each action carries the dwell attribute.
+  const trackClick = (props: AlertsCardClicked) => {
+    const msSinceLoad = loadedAtRef.current === undefined ? undefined : Date.now() - loadedAtRef.current;
+    alertsCardClicked({ ...props, ms_since_load: msSinceLoad });
+  };
+
   // Severity and timestamp are derived once per alert so the sort comparator,
   // the badge counts, and the rows don't recompute them.
   const { displayed, criticalCount, highCount } = useMemo(() => {
@@ -188,7 +204,7 @@ function FiringAlertsCardInner() {
             <Badge text={severityLabel(level)} color={severityLevelColor(level)} />
             <SummaryCardTitle
               href={detailHref}
-              onClick={() => alertsCardClicked({ action: 'alert_detail', placement: 'list', severity: level })}
+              onClick={() => trackClick({ action: 'alert_detail', placement: 'list', severity: level })}
             >
               {alert.labels.alertname}
             </SummaryCardTitle>
@@ -207,7 +223,7 @@ function FiringAlertsCardInner() {
             variant="primary"
             icon="plus"
             href={newRuleHref}
-            onClick={() => alertsCardClicked({ action: 'create_rule', placement: 'empty_state' })}
+            onClick={() => trackClick({ action: 'create_rule', placement: 'empty_state' })}
           >
             <Trans i18nKey="home.firing-alerts-card.create">Create an alert rule</Trans>
           </LinkButton>
@@ -222,7 +238,7 @@ function FiringAlertsCardInner() {
               fill="text"
               icon="plus"
               href={newRuleHref}
-              onClick={() => alertsCardClicked({ action: 'create_rule', placement: 'footer' })}
+              onClick={() => trackClick({ action: 'create_rule', placement: 'footer' })}
             >
               <Trans i18nKey="home.firing-alerts-card.create">Create an alert rule</Trans>
             </LinkButton>
@@ -233,7 +249,7 @@ function FiringAlertsCardInner() {
             fill="text"
             href={viewAllHref}
             onClick={() =>
-              alertsCardClicked({
+              trackClick({
                 action: hasAlerts ? 'view_all_alerts' : 'view_all_rules',
                 placement: 'footer',
               })
