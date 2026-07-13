@@ -173,7 +173,7 @@ func TestWebhookConnector_webhook(t *testing.T) {
 			hooks := stubWebhookRepo{cfg: cfg, slug: "grafana/grafana", event: tt.event, verifyErr: tt.verifyErr, err: tt.processErr}
 
 			s := &webhookConnector{core: &provisioningapis.APIBuilder{}, replayCache: newReplayCache(time.Hour)}
-			rsp, err := s.webhook(t.Context(), &http.Request{}, hooks)
+			rsp, _, err := s.webhook(t.Context(), &http.Request{}, hooks)
 
 			if tt.expectedError != nil {
 				require.Error(t, err)
@@ -211,12 +211,12 @@ func TestWebhookConnector_webhook_replay(t *testing.T) {
 
 	s := &webhookConnector{core: &provisioningapis.APIBuilder{}, replayCache: newReplayCache(time.Hour)}
 
-	first, err := s.webhook(t.Context(), &http.Request{}, hooks)
+	first, _, err := s.webhook(t.Context(), &http.Request{}, hooks)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusAccepted, first.Code)
 
 	// Replaying the same key is silently dropped with a generic 200 and no job.
-	dup, err := s.webhook(t.Context(), &http.Request{}, hooks)
+	dup, _, err := s.webhook(t.Context(), &http.Request{}, hooks)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, dup.Code)
 	require.Nil(t, dup.Job)
@@ -224,7 +224,7 @@ func TestWebhookConnector_webhook_replay(t *testing.T) {
 	// An empty replay key is never treated as a duplicate.
 	hooks.replayKey = ""
 	for i := 0; i < 2; i++ {
-		rsp, err := s.webhook(t.Context(), &http.Request{}, hooks)
+		rsp, _, err := s.webhook(t.Context(), &http.Request{}, hooks)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusAccepted, rsp.Code)
 	}

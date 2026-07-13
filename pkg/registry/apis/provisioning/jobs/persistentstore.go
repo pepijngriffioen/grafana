@@ -40,6 +40,8 @@ const (
 	LabelRepository = "provisioning.grafana.app/repository"
 	// LabelJobOriginalUID contains the Job's original uid as a label. This allows for label selectors to find the archived version of a job.
 	LabelJobOriginalUID = "provisioning.grafana.app/original-uid"
+	// AnnoWebhookSender carries the provider username that triggered a webhook-created job.
+	AnnoWebhookSender = "provisioning.grafana.app/webhookSender"
 )
 
 // ErrLeaseLost indicates the job's claim in the store is no longer the one we placed:
@@ -546,6 +548,7 @@ func (s *persistentStore) Insert(ctx context.Context, namespace string, spec pro
 			Labels: map[string]string{
 				LabelRepository: spec.Repository,
 			},
+			Annotations: webhookAttributionFromContext(ctx),
 		},
 		Spec: spec,
 	}
@@ -615,4 +618,23 @@ func mutateJobAction(job *provisioning.Job) error {
 		return apierrors.NewBadRequest("multiple job types found")
 	}
 	return nil
+}
+
+type webhookAttributionCtxKey struct{}
+
+// WithWebhookAttribution returns a context that carries the provider username
+// that triggered a webhook, recorded on jobs created by Insert.
+func WithWebhookAttribution(ctx context.Context, sender string) context.Context {
+	if sender == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, webhookAttributionCtxKey{}, sender)
+}
+
+func webhookAttributionFromContext(ctx context.Context) map[string]string {
+	sender, _ := ctx.Value(webhookAttributionCtxKey{}).(string)
+	if sender == "" {
+		return nil
+	}
+	return map[string]string{AnnoWebhookSender: sender}
 }

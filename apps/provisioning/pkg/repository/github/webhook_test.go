@@ -38,24 +38,28 @@ func TestParseWebhooks(t *testing.T) {
 			PRURL:     "https://github.com/grafana/git-ui-sync-demo/pull/12",
 			SourceRef: "dashboard/1733653266690",
 			Hash:      "ab5446a53df9e5f8bdeed52250f51fad08e822bc",
+			Sender:    "ryantxu",
 		}},
 		{"push", "different_branch", repo.WebhookEvent{
 			Type:         repo.WebhookEventPush,
 			RepoSlug:     "grafana/git-ui-sync-demo",
 			Branch:       "not-main",
 			TotalChanges: 1,
+			Sender:       "ryantxu",
 		}},
 		{"push", "nothing_relevant", repo.WebhookEvent{
 			Type:         repo.WebhookEventPush,
 			RepoSlug:     "grafana/git-ui-sync-demo",
 			Branch:       "main",
 			TotalChanges: 1,
+			Sender:       "ryantxu",
 		}},
 		{"push", "nested", repo.WebhookEvent{
 			Type:         repo.WebhookEventPush,
 			RepoSlug:     "grafana/git-ui-sync-demo",
 			Branch:       "main",
 			TotalChanges: 5,
+			Sender:       "ryantxu",
 		}},
 		{"push", "keep_file_only", repo.WebhookEvent{
 			Type:         repo.WebhookEventPush,
@@ -63,6 +67,7 @@ func TestParseWebhooks(t *testing.T) {
 			Branch:       "main",
 			DeletedPaths: []string{"empty-folder/.keep"},
 			TotalChanges: 1,
+			Sender:       "testuser",
 		}},
 		{"push", "keep_file_with_others", repo.WebhookEvent{
 			Type:         repo.WebhookEventPush,
@@ -70,6 +75,7 @@ func TestParseWebhooks(t *testing.T) {
 			Branch:       "main",
 			DeletedPaths: []string{"dashboards/.keep", "dashboards/dashboard1.json", "dashboards/dashboard2.json"},
 			TotalChanges: 3,
+			Sender:       "testuser",
 		}},
 		{"push", "multiple_keep_files", repo.WebhookEvent{
 			Type:         repo.WebhookEventPush,
@@ -77,6 +83,7 @@ func TestParseWebhooks(t *testing.T) {
 			Branch:       "main",
 			DeletedPaths: []string{"empty-folder1/.keep", "dashboards-to-delete/.keep", "dashboards-to-delete/dashboard.json"},
 			TotalChanges: 3,
+			Sender:       "testuser",
 		}},
 		{"issue_comment", "created", repo.WebhookEvent{
 			Type:    repo.WebhookEventUnsupported,

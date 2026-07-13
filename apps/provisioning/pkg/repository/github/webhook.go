@@ -94,6 +94,7 @@ func (r *githubWebhookRepository) ProcessRequest(ctx context.Context, req *repos
 			Branch:       strings.TrimPrefix(event.GetRef(), "refs/heads/"),
 			DeletedPaths: deletedPaths,
 			TotalChanges: totalChanges,
+			Sender:       event.GetSender().GetLogin(),
 		}, nil
 	case *github.PullRequestEvent:
 		if event.GetRepo() == nil {
@@ -112,6 +113,7 @@ func (r *githubWebhookRepository) ProcessRequest(ctx context.Context, req *repos
 			PRURL:     pr.GetHTMLURL(),
 			SourceRef: pr.GetHead().GetRef(),
 			Hash:      pr.GetHead().GetSHA(),
+			Sender:    event.GetSender().GetLogin(),
 		}, nil
 	case *github.PingEvent:
 		return repository.WebhookEvent{Type: repository.WebhookEventPing}, nil

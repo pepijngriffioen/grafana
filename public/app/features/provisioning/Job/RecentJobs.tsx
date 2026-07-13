@@ -3,7 +3,7 @@ import { useMemo, useRef } from 'react';
 
 import { intervalToAbbreviatedDurationString, type TraceKeyValuePair } from '@grafana/data';
 import { t, Trans } from '@grafana/i18n';
-import { Badge, Box, Card, InteractiveTable, Spinner, Stack, Text } from '@grafana/ui';
+import { Badge, Box, Card, InteractiveTable, Spinner, Stack, Text, TextLink } from '@grafana/ui';
 import { getErrorMessage } from 'app/api/clients/provisioning/utils/httpUtils';
 import { type Job, type Repository } from 'app/api/clients/provisioning/v0alpha1';
 import KeyValuesTable from 'app/features/explore/TraceView/components/TraceTimelineViewer/SpanDetail/KeyValuesTable';
@@ -22,6 +22,7 @@ interface Props {
 
 const AnnoAuthor = 'provisioning.grafana.app/author';
 const AnnoAuthorEmail = 'provisioning.grafana.app/authorEmail';
+const AnnoWebhookSender = 'provisioning.grafana.app/webhookSender';
 
 type JobCell = {
   row: {
@@ -44,7 +45,7 @@ function formatJobDuration(job: Job): string | null {
   return intervalToAbbreviatedDurationString(interval, true);
 }
 
-const getJobColumns = (showAuthor: boolean) => [
+const getJobColumns = (showAuthor: boolean, repo: Repository) => [
   {
     id: 'jobId',
     header: t('provisioning.recent-jobs.column-job-id', 'Job ID'),
@@ -73,6 +74,20 @@ const getJobColumns = (showAuthor: boolean) => [
           header: t('provisioning.recent-jobs.column-triggered-by', 'Triggered by'),
           cell: ({ row: { original: job } }: JobCell) => {
             const annotations = job.metadata?.annotations;
+            const sender = annotations?.[AnnoWebhookSender];
+            if (sender) {
+              const url = getWebhookSenderUrl(repo, sender);
+              const label = t('provisioning.recent-jobs.triggered-by-webhook', '{{sender}} (via Webhook)', {
+                sender,
+              });
+              return url ? (
+                <TextLink href={url} external>
+                  {label}
+                </TextLink>
+              ) : (
+                label
+              );
+            }
             const author = annotations?.[AnnoAuthor] || annotations?.[AnnoAuthorEmail];
             return author || t('provisioning.recent-jobs.triggered-by-system', 'System');
           },
@@ -162,6 +177,19 @@ function ExpandedRow({ row }: ExpandedRowProps) {
   );
 }
 
+function getWebhookSenderUrl(repo: Repository, sender: string): string | undefined {
+  const spec = repo.spec;
+  const url = spec?.github?.url ?? spec?.githubEnterprise?.url ?? spec?.gitlab?.url ?? spec?.bitbucket?.url;
+  if (!url) {
+    return undefined;
+  }
+  try {
+    return `${new URL(url).origin}/${encodeURIComponent(sender)}`;
+  } catch {
+    return undefined;
+  }
+}
+
 function EmptyState() {
   return (
     <Stack direction={'column'} alignItems={'center'}>
@@ -177,7 +205,7 @@ export function RecentJobs({ repo }: Props) {
     repositoryName: repo.metadata?.name ?? 'x',
   });
   const showAuthor = useBooleanFlagValue('provisioning.userAttribution', false);
-  const jobColumns = useMemo(() => getJobColumns(showAuthor), [showAuthor]);
+  const jobColumns = useMemo(() => getJobColumns(showAuthor, repo), [showAuthor, repo]);
   const hasLoadedDataRef = useRef(false);
 
   if (activeQuery.data || historicQuery.data) {

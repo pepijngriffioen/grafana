@@ -48,6 +48,12 @@ type WebhookEvent struct {
 	SourceRef    string
 	Hash         string
 	Message      string
+	Sender       string
+}
+
+// TriggeredBy returns the provider username that triggered the event, when known.
+func (e WebhookEvent) TriggeredBy() string {
+	return e.Sender
 }
 
 // ToCtxLogger returns a context whose logger carries the event's populated fields.

@@ -175,7 +175,7 @@ func (s *webhookConnector) Connect(ctx context.Context, name string, opts runtim
 		// Limit the webhook request body size
 		r.Body = http.MaxBytesReader(w, r.Body, webhookMaxBodySize)
 
-		rsp, err := s.webhook(ctx, r, hooks)
+		rsp, sender, err := s.webhook(ctx, r, hooks)
 		if err != nil {
 			span.RecordError(err)
 			logger.Error("failed to process webhook request", "error", err)
@@ -205,7 +205,7 @@ func (s *webhookConnector) Connect(ctx context.Context, name string, opts runtim
 			actionTaken = string(rsp.Job.Action)
 			span.SetAttributes(attribute.String("job.action", actionTaken))
 
-			job, err := s.core.GetJobQueue().Insert(ctx, namespace, *rsp.Job)
+			job, err := s.core.GetJobQueue().Insert(jobs.WithWebhookAttribution(ctx, sender), namespace, *rsp.Job)
 			if err != nil {
 				span.RecordError(err)
 				logger.Error("failed to insert job", "error", err)
@@ -225,9 +225,9 @@ func (s *webhookConnector) Connect(ctx context.Context, name string, opts runtim
 // webhook turns an inbound delivery into a sync/pull-request job response. The
 // repository supplies the normalized event via ProcessRequest; this dispatches
 // it against the configured repository and branch.
-func (s *webhookConnector) webhook(ctx context.Context, req *http.Request, repo repository.WebhookRepository) (*provisioning.WebhookResponse, error) {
+func (s *webhookConnector) webhook(ctx context.Context, req *http.Request, repo repository.WebhookRepository) (*provisioning.WebhookResponse, string, error) {
 	if repo.Config().Status.Webhook == nil {
-		return nil, fmt.Errorf("unexpected webhook request")
+		return nil, "", fmt.Errorf("unexpected webhook request")
 	}
 
 	ctx = logging.Context(ctx, logging.FromContext(ctx).With("slug", repo.Slug(), "ref", repo.Config().Branch()))
@@ -235,7 +235,7 @@ func (s *webhookConnector) webhook(ctx context.Context, req *http.Request, repo 
 	// Authenticate the request before parsing anything.
 	verified, err := repo.VerifyRequest(req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Silently drop a delivery whose replay key we have already processed within
@@ -243,12 +243,12 @@ func (s *webhookConnector) webhook(ctx context.Context, req *http.Request, repo 
 	// attacker that the captured payload was a real previously-processed delivery.
 	if s.replayCache.seenOrAdd(verified.ReplayKey) {
 		logging.FromContext(ctx).Debug("dropping replayed webhook delivery")
-		return &provisioning.WebhookResponse{Code: http.StatusOK, Message: "ok"}, nil
+		return &provisioning.WebhookResponse{Code: http.StatusOK, Message: "ok"}, "", nil
 	}
 
 	event, err := repo.ProcessRequest(ctx, verified)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	ctx = event.ToCtxLogger(ctx)
@@ -258,39 +258,39 @@ func (s *webhookConnector) webhook(ctx context.Context, req *http.Request, repo 
 	case repository.WebhookEventPush:
 		if event.RepoSlug != repo.Slug() {
 			logging.FromContext(ctx).Warn("webhook push event repository mismatch", "expected", repo.Slug(), "got", event.RepoSlug)
-			return nil, repository.ErrRepositoryMismatch
+			return nil, "", repository.ErrRepositoryMismatch
 		}
 		if !repo.Config().Spec.Sync.Enabled {
-			return &provisioning.WebhookResponse{Code: http.StatusOK}, nil
+			return &provisioning.WebhookResponse{Code: http.StatusOK}, "", nil
 		}
 		// Skip silently if the event is not for the configured branch, as the
 		// webhook cannot be configured to only publish events for one branch.
 		if event.Branch != repo.Config().Branch() {
-			return &provisioning.WebhookResponse{Code: http.StatusOK}, nil
+			return &provisioning.WebhookResponse{Code: http.StatusOK}, "", nil
 		}
-		return s.pushSyncResponse(event), nil
+		return s.pushSyncResponse(event), event.TriggeredBy(), nil
 	case repository.WebhookEventPullRequest:
 		if event.RepoSlug != repo.Slug() {
 			logging.FromContext(ctx).Warn("webhook pull request event repository mismatch", "expected", repo.Slug(), "got", event.RepoSlug)
-			return nil, repository.ErrRepositoryMismatch
+			return nil, "", repository.ErrRepositoryMismatch
 		}
 		if event.Branch != repo.Config().Branch() {
 			return &provisioning.WebhookResponse{
 				Code:    http.StatusOK,
 				Message: fmt.Sprintf("ignoring pull request event as %s is not the configured branch", event.Branch),
-			}, nil
+			}, "", nil
 		}
 		if !watchedPullRequestAction(event.Action) {
 			return &provisioning.WebhookResponse{
 				Code:    http.StatusOK,
 				Message: fmt.Sprintf("ignore pull request event: %s", event.Action),
-			}, nil
+			}, "", nil
 		}
-		return pullRequestResponse(event), nil
+		return pullRequestResponse(event), event.TriggeredBy(), nil
 	case repository.WebhookEventPing:
-		return &provisioning.WebhookResponse{Code: http.StatusOK, Message: "ping received"}, nil
+		return &provisioning.WebhookResponse{Code: http.StatusOK, Message: "ping received"}, "", nil
 	default:
-		return &provisioning.WebhookResponse{Code: http.StatusNotImplemented, Message: event.Message}, nil
+		return &provisioning.WebhookResponse{Code: http.StatusNotImplemented, Message: event.Message}, "", nil
 	}
 }
 
