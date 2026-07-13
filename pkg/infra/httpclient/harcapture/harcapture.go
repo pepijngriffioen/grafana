@@ -189,6 +189,12 @@ func redactURLValue(value string) string {
 // externally-sourced entries don't leak secrets into a shared bundle. It returns nil if the document
 // can't be parsed — failing closed (drop the frame) rather than merging a document we couldn't
 // redact. (Request/response body payload redaction is out of scope, same as for in-process capture.)
+//
+// GAP (must resolve before the external path is activated — #1270): headers are redacted with the
+// static denylist only. Unlike the in-process path, a datasource's arbitrarily-named "Custom HTTP
+// Headers" are NOT redacted here, because their names aren't threaded in for out-of-process plugins.
+// Well-known auth headers (Authorization, Cookie, X-Api-Key, ...) are covered; a custom-named secret
+// header would pass through. Tracked in the diagnostics tracker (external redaction residual).
 func RedactHARDocument(doc []byte) []byte {
 	var h har.HAR
 	if err := json.Unmarshal(doc, &h); err != nil || h.Log == nil {

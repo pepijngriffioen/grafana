@@ -225,18 +225,14 @@ func collectHAR(resp *backend.QueryDataResponse, harBuffer *harcapture.Buffer) (
 	if bufferDoc != nil {
 		docs = append([][]byte{bufferDoc}, frameDocs...)
 	}
-	merged := mergeHAR(docs)
-	if merged == nil {
-		// docs was non-empty, so a nil result means a parse/marshal failure. Surface it rather than
-		// silently omitting traffic.har from an otherwise-successful bundle.
-		return nil, errors.New("failed to merge captured HAR")
-	}
-	return merged, nil
+	return mergeHAR(docs)
 }
 
 // mergeHAR combines multiple HAR 1.2 documents into a single one by concatenating their
-// log.entries. Documents that fail to parse are skipped. Returns nil when there are no entries.
-func mergeHAR(docs [][]byte) []byte {
+// log.entries. Documents that fail to parse are skipped. Returns (nil, nil) when there are no
+// entries (a benign "no captured traffic" -- e.g. a valid but empty external frame), and a non-nil
+// error only when the merged result can't be marshaled.
+func mergeHAR(docs [][]byte) ([]byte, error) {
 	type harEnvelope struct {
 		Log struct {
 			Creator json.RawMessage   `json:"creator"`
@@ -257,7 +253,9 @@ func mergeHAR(docs [][]byte) []byte {
 		}
 	}
 	if len(entries) == 0 {
-		return nil
+		// No usable entries: treat as "nothing captured", same as an empty in-process buffer, rather
+		// than an error. (An untrusted plugin emitting an empty capture frame must not 500 the run.)
+		return nil, nil
 	}
 	if creator == nil {
 		creator = json.RawMessage(`{"name":"Grafana","version":"1.0"}`)
@@ -270,11 +268,7 @@ func mergeHAR(docs [][]byte) []byte {
 			"entries": entries,
 		},
 	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return nil
-	}
-	return b
+	return json.Marshal(out)
 }
 
 // buildTarGz packs the named files into a gzipped tar archive. Files are written in deterministic

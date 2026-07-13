@@ -60,7 +60,8 @@ func TestMergeHAR(t *testing.T) {
 	d2 := []byte(`{"log":{"entries":[{"n":2},{"n":3}]}}`)
 	malformed := []byte(`not json`)
 
-	out := mergeHAR([][]byte{d1, malformed, d2})
+	out, err := mergeHAR([][]byte{d1, malformed, d2})
+	require.NoError(t, err)
 	require.NotNil(t, out)
 
 	var env struct {
@@ -75,8 +76,26 @@ func TestMergeHAR(t *testing.T) {
 	require.Len(t, env.Log.Entries, 3, "entries from all valid docs are concatenated; malformed skipped")
 	require.JSONEq(t, `{"name":"A","version":"1"}`, string(env.Log.Creator), "first creator is kept")
 
-	require.Nil(t, mergeHAR([][]byte{malformed}), "no parseable entries -> nil")
-	require.Nil(t, mergeHAR(nil))
+	// No parseable entries -> (nil, nil): benign "nothing captured", not an error.
+	out, err = mergeHAR([][]byte{malformed})
+	require.NoError(t, err)
+	require.Nil(t, out)
+	out, err = mergeHAR(nil)
+	require.NoError(t, err)
+	require.Nil(t, out)
+}
+
+func TestCollectHAR_emptyExternalFrame_benign(t *testing.T) {
+	// A valid-but-empty external frame ({"log":{"entries":[]}}) is "no traffic", not a failure:
+	// collectHAR must return (nil, nil) so the handler produces a 200 bundle without traffic.har,
+	// not a 500. (Regression guard: an untrusted plugin's empty capture must not fail the run.)
+	f := data.NewFrame("")
+	f.Meta = &data.FrameMeta{Custom: map[string]interface{}{"har": `{"log":{"entries":[]}}`}}
+	resp := &backend.QueryDataResponse{Responses: backend.Responses{"__har__": backend.DataResponse{Frames: data.Frames{f}}}}
+
+	out, err := collectHAR(resp, &harcapture.Buffer{})
+	require.NoError(t, err)
+	require.Nil(t, out)
 }
 
 func TestHasCapturedHAR(t *testing.T) {
