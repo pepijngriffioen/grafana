@@ -209,6 +209,27 @@ func TestBuffer_ToHAR_redactsURLsAndCredentials(t *testing.T) {
 	assert.NotContains(t, doc.Log.Entries[0].Response.RedirectURL, "SECRET")
 }
 
+func TestRedactHARDocument(t *testing.T) {
+	doc := []byte(`{"log":{"entries":[{` +
+		`"request":{"headers":[{"name":"Authorization","value":"Bearer SECRET"},{"name":"Accept","value":"application/json"}],` +
+		`"queryString":[{"name":"api_key","value":"QSECRET"},{"name":"region","value":"eu"}],` +
+		`"cookies":[{"name":"sess","value":"COOKIESECRET"}],"url":"https://u:p@h/x?api_key=QSECRET"},` +
+		`"response":{"headers":[{"name":"Location","value":"https://idp/cb?access_token=RSECRET"}],"cookies":[]}` +
+		`}]}}`)
+
+	out := string(RedactHARDocument(doc))
+
+	for _, secret := range []string{"Bearer SECRET", "QSECRET", "COOKIESECRET", "RSECRET", "u:p@"} {
+		assert.NotContains(t, out, secret, "secret leaked through frame redaction")
+	}
+	assert.Contains(t, out, "application/json", "non-sensitive header preserved")
+	assert.Contains(t, out, "region", "non-sensitive query preserved")
+
+	// Unparseable input is dropped (fail closed), not returned unredacted.
+	assert.Nil(t, RedactHARDocument([]byte("not har")))
+	assert.Nil(t, RedactHARDocument([]byte(`{"notalog":1}`)))
+}
+
 func TestRedactErrorText(t *testing.T) {
 	// A Go *url.Error renders the full request URL (query string included); the secret query param
 	// must be redacted while the surrounding message and non-sensitive params survive.

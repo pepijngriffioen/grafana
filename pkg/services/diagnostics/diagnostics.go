@@ -36,10 +36,10 @@ func NewBundler() *Bundler {
 // queryErr is the error (if any) from running the queries. A failed query is itself diagnostic
 // signal — the captured HAR already holds the failed attempt(s) — so it is recorded in the bundle
 // rather than causing the capture to be discarded.
-func (b *Bundler) Build(harBuffer *harcapture.Buffer, panelJSON, dashboardJSON json.RawMessage, queryErr error) ([]byte, error) {
+func (b *Bundler) Build(resp *backend.QueryDataResponse, harBuffer *harcapture.Buffer, panelJSON, dashboardJSON json.RawMessage, queryErr error) ([]byte, error) {
 	files := map[string][]byte{}
 
-	har, err := collectHAR(harBuffer)
+	har, err := collectHAR(resp, harBuffer)
 	if err != nil {
 		return nil, err
 	}
@@ -64,6 +64,10 @@ func (b *Bundler) Build(harBuffer *harcapture.Buffer, panelJSON, dashboardJSON j
 	return buildTarGz(files)
 }
 
+// harResponseKey is the reserved synthetic refId under which externalized (gRPC) plugins return
+// captured traffic as a __har__ response frame.
+const harResponseKey = "__har__"
+
 // ResponseError returns a combined error describing any per-refId query failures in resp
 // (backend.DataResponse.Error), or nil if there are none. Datasource queries usually fail this way
 // — QueryData returns no top-level error while individual responses carry the failure — so a caller
@@ -75,6 +79,12 @@ func ResponseError(resp *backend.QueryDataResponse) error {
 	}
 	refIDs := make([]string, 0, len(resp.Responses))
 	for refID, r := range resp.Responses {
+		// Skip the synthetic capture frame: an externalized plugin sets an error on it (so the SDK's
+		// own middlewares see the failure), but its clean error text is read via PluginCaptureError,
+		// not surfaced here under the reserved refID.
+		if refID == harResponseKey {
+			continue
+		}
 		if r.Error != nil {
 			refIDs = append(refIDs, refID)
 		}
@@ -90,21 +100,155 @@ func ResponseError(resp *backend.QueryDataResponse) error {
 	return errors.Join(errs...)
 }
 
-// HasCapturedHAR reports whether any HAR traffic was captured for this request (the in-process
-// buffer has entries). The handler uses it to decide whether a failed query still has something
-// worth bundling.
-func HasCapturedHAR(harBuffer *harcapture.Buffer) bool {
-	return harBuffer != nil && harBuffer.Len() > 0
+// PluginCaptureError returns the error an externalized (gRPC) plugin stashed alongside its captured
+// __har__ frame (Custom["queryError"]), or nil if absent. The SDK capture middleware records a
+// top-level QueryData error there rather than returning it, because a gRPC error would discard the
+// whole response — and the captured traffic with it — before it crossed the wire. Reading it back
+// here lets the failure still be recorded in the bundle.
+func PluginCaptureError(resp *backend.QueryDataResponse) error {
+	if resp == nil {
+		return nil
+	}
+	r, ok := resp.Responses[harResponseKey]
+	if !ok {
+		return nil
+	}
+	for _, frame := range r.Frames {
+		if frame == nil || frame.Meta == nil {
+			continue
+		}
+		custom, ok := frame.Meta.Custom.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if msg, ok := custom["queryError"].(string); ok && msg != "" {
+			return errors.New(msg)
+		}
+	}
+	return nil
 }
 
-// collectHAR returns the captured HTTP traffic (from the in-process buffer) as HAR 1.2 JSON.
-// Returns (nil, nil) when nothing was captured, and a non-nil error if traffic was captured but
-// could not be serialized (so the caller can fail rather than return an empty bundle).
-func collectHAR(harBuffer *harcapture.Buffer) ([]byte, error) {
-	if harBuffer == nil || harBuffer.Len() == 0 {
-		return nil, nil
+// HasCapturedHAR reports whether any HAR traffic was captured for this request — either the
+// in-process buffer has entries (core plugins) or an external plugin returned a __har__ frame. The
+// handler uses it to decide whether a failed query still has something worth bundling.
+func HasCapturedHAR(resp *backend.QueryDataResponse, harBuffer *harcapture.Buffer) bool {
+	if harBuffer != nil && harBuffer.Len() > 0 {
+		return true
 	}
-	return harBuffer.ToHAR()
+	if resp != nil {
+		if r, ok := resp.Responses[harResponseKey]; ok && len(r.Frames) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// collectHAR returns the captured HTTP traffic as HAR 1.2 JSON. It merges two sources: the
+// in-process buffer (core plugins) and the __har__ response frame(s) returned by externalized GRPC
+// plugins. Returns (nil, nil) when nothing was captured, and a non-nil error if traffic was
+// captured but could not be serialized (so the caller can fail rather than return an empty bundle).
+//
+// NOTE: the __har__ frame path is inert until the SDK-side HTTP capture middleware that emits those
+// frames ships and Grafana is bumped to that SDK version (#1270) — until then external
+// (out-of-process) plugin traffic is NOT captured. Externally-sourced frames are run through
+// harcapture.RedactHARDocument before merging, so their headers/cookies/query/URLs are redacted the
+// same way in-process capture is (don't rely on the plugin/SDK to redact).
+func collectHAR(resp *backend.QueryDataResponse, harBuffer *harcapture.Buffer) ([]byte, error) {
+	var bufferDoc []byte
+	if harBuffer != nil && harBuffer.Len() > 0 {
+		b, err := harBuffer.ToHAR()
+		if err != nil {
+			// The in-process buffer captured traffic but couldn't be serialized. Surface the error
+			// instead of silently dropping traffic.har and returning a success bundle with no
+			// captured traffic.
+			return nil, err
+		}
+		bufferDoc = b
+	}
+
+	// __har__ frames carry capture from externalized gRPC plugins (out-of-process). "__har__" is a
+	// reserved synthetic refId; a client query using it would be consumed here, but that's harmless
+	// as query results are not part of the bundle (only captured traffic + panel/dashboard JSON).
+	var frameDocs [][]byte
+	if resp != nil {
+		if harResp, ok := resp.Responses[harResponseKey]; ok {
+			delete(resp.Responses, harResponseKey)
+			// A plugin may split its capture across multiple frames; collect every frame's HAR
+			// payload rather than only the first, so no entries are lost.
+			for _, frame := range harResp.Frames {
+				if frame == nil || frame.Meta == nil {
+					continue
+				}
+				custom, ok := frame.Meta.Custom.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if harStr, ok := custom["har"].(string); ok && harStr != "" {
+					// Redact externally-sourced entries just like in-process capture. A frame that
+					// can't be redacted (nil) is dropped rather than merged unredacted.
+					if redacted := harcapture.RedactHARDocument([]byte(harStr)); redacted != nil {
+						frameDocs = append(frameDocs, redacted)
+					}
+				}
+			}
+		}
+	}
+
+	// Common case: only the in-process buffer captured traffic (core plugins). Its ToHAR output is
+	// already a complete HAR 1.2 document, so return it directly rather than re-parsing and
+	// re-marshaling every captured request/response through mergeHAR.
+	if len(frameDocs) == 0 {
+		return bufferDoc, nil
+	}
+
+	docs := frameDocs
+	if bufferDoc != nil {
+		docs = append([][]byte{bufferDoc}, frameDocs...)
+	}
+	return mergeHAR(docs), nil
+}
+
+// mergeHAR combines multiple HAR 1.2 documents into a single one by concatenating their
+// log.entries. Documents that fail to parse are skipped. Returns nil when there are no entries.
+func mergeHAR(docs [][]byte) []byte {
+	type harEnvelope struct {
+		Log struct {
+			Creator json.RawMessage   `json:"creator"`
+			Entries []json.RawMessage `json:"entries"`
+		} `json:"log"`
+	}
+
+	entries := make([]json.RawMessage, 0)
+	var creator json.RawMessage
+	for _, d := range docs {
+		var env harEnvelope
+		if err := json.Unmarshal(d, &env); err != nil {
+			continue
+		}
+		entries = append(entries, env.Log.Entries...)
+		if creator == nil && len(env.Log.Creator) > 0 {
+			creator = env.Log.Creator
+		}
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	if creator == nil {
+		creator = json.RawMessage(`{"name":"Grafana","version":"1.0"}`)
+	}
+
+	out := map[string]any{
+		"log": map[string]any{
+			"version": "1.2",
+			"creator": creator,
+			"entries": entries,
+		},
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // buildTarGz packs the named files into a gzipped tar archive. Files are written in deterministic

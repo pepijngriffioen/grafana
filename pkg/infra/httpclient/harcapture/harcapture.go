@@ -111,6 +111,12 @@ func redactHeader(name, value string, extra map[string]struct{}) string {
 	return value
 }
 
+// redactHeaderStatic redacts using only the static denylist. Used for externally-sourced HAR frames,
+// where the per-request custom-header names are not known to this process.
+func redactHeaderStatic(name, value string) string {
+	return redactHeader(name, value, nil)
+}
+
 func redactQueryParam(name, value string) string {
 	if _, ok := sensitiveQueryParams[strings.ToLower(name)]; ok {
 		return redactedValue
@@ -176,6 +182,61 @@ func redactURLValue(value string) string {
 		return redactedValue
 	}
 	return redactedURLString(u)
+}
+
+// RedactHARDocument applies the same header/cookie/query/URL redaction used for in-process capture
+// to a HAR 1.2 document produced elsewhere (e.g. an external plugin's __har__ frame), so
+// externally-sourced entries don't leak secrets into a shared bundle. It returns nil if the document
+// can't be parsed — failing closed (drop the frame) rather than merging a document we couldn't
+// redact. (Request/response body payload redaction is out of scope, same as for in-process capture.)
+func RedactHARDocument(doc []byte) []byte {
+	var h har.HAR
+	if err := json.Unmarshal(doc, &h); err != nil || h.Log == nil {
+		return nil
+	}
+	for _, e := range h.Log.Entries {
+		if e == nil {
+			continue
+		}
+		if e.Request != nil {
+			redactPairs(e.Request.Headers, redactHeaderStatic)
+			redactPairs(e.Request.QueryString, redactQueryParam)
+			redactCookieValues(e.Request.Cookies)
+			if e.Request.URL != "" {
+				e.Request.URL = redactURLValue(e.Request.URL)
+			}
+		}
+		if e.Response != nil {
+			redactPairs(e.Response.Headers, redactHeaderStatic)
+			redactCookieValues(e.Response.Cookies)
+			if e.Response.RedirectURL != "" {
+				e.Response.RedirectURL = redactURLValue(e.Response.RedirectURL)
+			}
+		}
+	}
+	out, err := json.Marshal(h)
+	if err != nil {
+		// Fail closed: returning the original bytes here would leak the unredacted frame we just
+		// failed to re-serialize into a bundle meant for external sharing.
+		return nil
+	}
+	return out
+}
+
+func redactPairs(pairs []*har.NameValuePair, redact func(name, value string) string) {
+	for _, p := range pairs {
+		if p != nil {
+			p.Value = redact(p.Name, p.Value)
+		}
+	}
+}
+
+func redactCookieValues(cookies []*har.Cookie) {
+	for _, c := range cookies {
+		if c != nil {
+			c.Value = redactedValue
+		}
+	}
 }
 
 // encodeBody returns the HAR text representation of a body plus its encoding. Valid UTF-8 is stored
