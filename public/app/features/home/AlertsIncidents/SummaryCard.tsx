@@ -114,7 +114,7 @@ export function SummaryCardTitle({
   children,
 }: {
   href?: string;
-  onClick?: () => void;
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>;
   children: string;
 }) {
   const styles = useStyles2(getStyles);
