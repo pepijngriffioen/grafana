@@ -136,8 +136,20 @@ func HasCapturedHAR(resp *backend.QueryDataResponse, harBuffer *harcapture.Buffe
 		return true
 	}
 	if resp != nil {
-		if r, ok := resp.Responses[harResponseKey]; ok && len(r.Frames) > 0 {
-			return true
+		if r, ok := resp.Responses[harResponseKey]; ok {
+			// Only count a frame that actually carries a non-empty "har" payload -- the same thing
+			// collectHAR extracts. A frame present but without a har payload contributes nothing, so
+			// treating it as "captured" would wrongly suppress the no-capture error path.
+			for _, frame := range r.Frames {
+				if frame == nil || frame.Meta == nil {
+					continue
+				}
+				if custom, ok := frame.Meta.Custom.(map[string]interface{}); ok {
+					if harStr, ok := custom["har"].(string); ok && harStr != "" {
+						return true
+					}
+				}
+			}
 		}
 	}
 	return false
@@ -170,6 +182,7 @@ func collectHAR(resp *backend.QueryDataResponse, harBuffer *harcapture.Buffer) (
 	// reserved synthetic refId; a client query using it would be consumed here, but that's harmless
 	// as query results are not part of the bundle (only captured traffic + panel/dashboard JSON).
 	var frameDocs [][]byte
+	sawHARPayload := false
 	if resp != nil {
 		if harResp, ok := resp.Responses[harResponseKey]; ok {
 			delete(resp.Responses, harResponseKey)
@@ -184,6 +197,7 @@ func collectHAR(resp *backend.QueryDataResponse, harBuffer *harcapture.Buffer) (
 					continue
 				}
 				if harStr, ok := custom["har"].(string); ok && harStr != "" {
+					sawHARPayload = true
 					// Redact externally-sourced entries just like in-process capture. A frame that
 					// can't be redacted (nil) is dropped rather than merged unredacted.
 					if redacted := harcapture.RedactHARDocument([]byte(harStr)); redacted != nil {
@@ -198,6 +212,12 @@ func collectHAR(resp *backend.QueryDataResponse, harBuffer *harcapture.Buffer) (
 	// already a complete HAR 1.2 document, so return it directly rather than re-parsing and
 	// re-marshaling every captured request/response through mergeHAR.
 	if len(frameDocs) == 0 {
+		// If frames carried HAR payloads but every one was dropped by redaction (fail-closed) and
+		// there's no in-process capture either, don't return a misleadingly-successful empty bundle
+		// while HasCapturedHAR reported capture -- surface it as an error.
+		if sawHARPayload && bufferDoc == nil {
+			return nil, errors.New("captured HAR frames could not be redacted")
+		}
 		return bufferDoc, nil
 	}
 
@@ -205,7 +225,13 @@ func collectHAR(resp *backend.QueryDataResponse, harBuffer *harcapture.Buffer) (
 	if bufferDoc != nil {
 		docs = append([][]byte{bufferDoc}, frameDocs...)
 	}
-	return mergeHAR(docs), nil
+	merged := mergeHAR(docs)
+	if merged == nil {
+		// docs was non-empty, so a nil result means a parse/marshal failure. Surface it rather than
+		// silently omitting traffic.har from an otherwise-successful bundle.
+		return nil, errors.New("failed to merge captured HAR")
+	}
+	return merged, nil
 }
 
 // mergeHAR combines multiple HAR 1.2 documents into a single one by concatenating their

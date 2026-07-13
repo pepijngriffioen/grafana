@@ -89,6 +89,25 @@ func TestHasCapturedHAR(t *testing.T) {
 	f.Meta = &data.FrameMeta{Custom: map[string]interface{}{"har": `{"log":{"entries":[]}}`}}
 	resp := &backend.QueryDataResponse{Responses: backend.Responses{"__har__": backend.DataResponse{Frames: data.Frames{f}}}}
 	require.True(t, HasCapturedHAR(resp, &harcapture.Buffer{}))
+
+	// A __har__ frame WITHOUT a har payload must NOT count as captured (else the no-capture error
+	// path is wrongly suppressed and the bundle is empty).
+	empty := data.NewFrame("")
+	empty.Meta = &data.FrameMeta{Custom: map[string]interface{}{"other": "x"}}
+	noPayload := &backend.QueryDataResponse{Responses: backend.Responses{"__har__": backend.DataResponse{Frames: data.Frames{empty}}}}
+	require.False(t, HasCapturedHAR(noPayload, &harcapture.Buffer{}), "frame without a har payload is not captured traffic")
+}
+
+func TestCollectHAR_unredactableFramesError(t *testing.T) {
+	// Frames carry HAR payloads, but each is unparseable so RedactHARDocument drops them (fail-closed)
+	// and there's no in-process buffer. collectHAR must surface an error, not a silent empty bundle.
+	f := data.NewFrame("")
+	f.Meta = &data.FrameMeta{Custom: map[string]interface{}{"har": "not valid har"}}
+	resp := &backend.QueryDataResponse{Responses: backend.Responses{"__har__": backend.DataResponse{Frames: data.Frames{f}}}}
+
+	out, err := collectHAR(resp, &harcapture.Buffer{})
+	require.Error(t, err, "unredactable captured frames must surface an error, not a nil/empty result")
+	require.Nil(t, out)
 }
 
 func TestCollectHAR_ExternalFramesAndNilFrame(t *testing.T) {
