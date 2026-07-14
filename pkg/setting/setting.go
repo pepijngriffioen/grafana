@@ -1822,6 +1822,7 @@ func (cfg *Cfg) parseINIFile(iniFile *ini.File) error {
 	// unified storage config
 	cfg.setUnifiedStorageConfig()
 
+	cfg.readStartupParams(iniFile)
 	return nil
 }
 
