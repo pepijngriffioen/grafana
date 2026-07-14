@@ -322,6 +322,17 @@ describe('<SpanDetail>', () => {
       expect(screen.getByLabelText('3 aggregated spans')).toBeInTheDocument();
     });
 
+    it('hides the count badge when the span count is zero', () => {
+      const zeroCount = { ...summarySpan.aggregation, spanCount: 0 };
+      render(
+        <SpanDetail
+          {...({ ...summaryProps, span: { ...summarySpan, aggregation: zeroCount } } as unknown as SpanDetailProps)}
+        />
+      );
+      expect(screen.getByText('(summary)')).toBeInTheDocument();
+      expect(screen.queryByLabelText(/aggregated span/)).not.toBeInTheDocument();
+    });
+
     it('shows min, median and max in the duration overview item', () => {
       render(<SpanDetail {...(summaryProps as unknown as SpanDetailProps)} />);
       expect(screen.getByText(/\(min\).*\(median\).*\(max\)/)).toBeInTheDocument();
