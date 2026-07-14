@@ -572,7 +572,7 @@ export default function SpanDetail(props: SpanDetailProps) {
           </h6>
           {isSummarySpan && (
             <span className={styles.summaryHeader}>
-              {(span.aggregation?.spanCount ?? 0) > 0 && (
+              {span.aggregation && (span.aggregation.spanCount ?? 0) > 0 && (
                 <span
                   className={styles.summaryCountBadge}
                   style={color ? { background: color, color: theme.colors.getContrastText(color) } : undefined}
