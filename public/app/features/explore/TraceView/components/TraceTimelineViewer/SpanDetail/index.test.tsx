@@ -182,6 +182,7 @@ describe('<SpanDetail>', () => {
     props.processToggle.mockReset();
     props.logsToggle.mockReset();
     props.logItemToggle.mockReset();
+    props.summaryAttributesToggle.mockReset();
 
     setPluginLinksHook(() => ({
       isLoading: false,
