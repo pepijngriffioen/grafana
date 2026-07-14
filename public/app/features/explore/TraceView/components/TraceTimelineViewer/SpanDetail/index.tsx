@@ -49,9 +49,10 @@ import { getSummaryDurationStats } from '../../utils/summary-span';
 import AccordianKeyValues from './AccordianKeyValues';
 import AccordianLogs from './AccordianLogs';
 import AccordianReferences from './AccordianReferences';
+import AccordionCategorizedKeyValues from './AccordionCategorizedKeyValues';
 import type DetailState from './DetailState';
 import { ShareSpanButton } from './ShareSpanButton';
-import { getSpanDetailLinkButtons } from './SpanDetailLinkButtons';
+import { SpanDetailLinkButtons } from './SpanDetailLinkButtons';
 import SpanFlameGraph from './SpanFlameGraph';
 
 const useResourceAttributesExtensionLinks = ({
@@ -457,21 +458,12 @@ export default function SpanDetail(props: SpanDetailProps) {
     spanStartTime: startTime,
   });
 
-  const linksComponent = getSpanDetailLinkButtons({
-    span,
-    createSpanLink,
-    datasourceType,
-    traceToProfilesOptions,
-    timeRange,
-    app,
-    shareButton: <ShareSpanButton focusSpanLink={focusSpanLink} />,
-  });
-
   const listOfContentCards = [];
 
   listOfContentCards.push(
-    <AccordianKeyValues
+    <AccordionCategorizedKeyValues
       data={tags}
+      sectionType="span"
       label={t('explore.span-detail.label-span-attributes', 'Span attributes')}
       isOpen={isTagsOpen}
       linksGetter={resourceLinksGetter}
@@ -481,8 +473,9 @@ export default function SpanDetail(props: SpanDetailProps) {
 
   if (process.tags) {
     listOfContentCards.push(
-      <AccordianKeyValues
+      <AccordionCategorizedKeyValues
         data={process.tags}
+        sectionType="resource"
         label={
           isSummarySpan ? (
             <>
@@ -604,7 +597,16 @@ export default function SpanDetail(props: SpanDetailProps) {
               <span className={styles.summaryLabel}>{t('explore.span-detail.summary-label', '(summary)')}</span>
             </span>
           )}
-          {linksComponent}
+          <SpanDetailLinkButtons
+            span={span}
+            createSpanLink={createSpanLink}
+            datasourceType={datasourceType}
+            datasourceUid={datasourceUid}
+            traceToProfilesOptions={traceToProfilesOptions}
+            timeRange={timeRange}
+            app={app}
+            shareButton={<ShareSpanButton focusSpanLink={focusSpanLink} />}
+          />
         </div>
         <div className={styles.listWrapper}>
           <LabeledList className={styles.list} divider={false} items={overviewItems} color={color} />
