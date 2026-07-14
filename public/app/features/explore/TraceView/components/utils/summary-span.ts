@@ -1,8 +1,31 @@
+import { css } from '@emotion/css';
+
+import { type GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
 
 import { type SpanAggregation } from '../types/trace';
 
 import { formatDuration } from './date';
+
+/**
+ * Pill badge that shows a summary span's aggregated span_count. Shared by the
+ * waterfall row (SpanBarRow) and the SpanDetail header so the two stay visually
+ * identical. Callers add their own context-specific margins and set the
+ * background/text color inline from the service color; the theme defaults here
+ * apply only when no color is provided.
+ */
+export const getSummaryCountBadgeStyle = (theme: GrafanaTheme2) =>
+  css({
+    background: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.pill,
+    color: theme.colors.text.primary,
+    display: 'inline-block',
+    fontSize: '0.85em',
+    fontWeight: 500,
+    lineHeight: 1.4,
+    padding: '0 6px',
+    verticalAlign: 'middle',
+  });
 
 export interface SummaryDurationStat {
   label: string;

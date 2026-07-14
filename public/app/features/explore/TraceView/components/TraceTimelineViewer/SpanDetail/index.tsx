@@ -44,7 +44,7 @@ import { type SpanLinkFunc } from '../../types/links';
 import { type TraceProcess, type TraceSpan, type TraceSpanReference } from '../../types/trace';
 import { formatDuration } from '../../utils/date';
 import { getServiceDisplayName } from '../../utils/service-name';
-import { getSummaryDurationStats } from '../../utils/summary-span';
+import { getSummaryCountBadgeStyle, getSummaryDurationStats } from '../../utils/summary-span';
 
 import AccordianKeyValues from './AccordianKeyValues';
 import AccordianLogs from './AccordianLogs';
@@ -188,19 +188,10 @@ const getStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
       flexShrink: 0,
     }),
-    summaryCountBadge: css({
-      label: 'SpanDetailSummaryCountBadge',
-      background: theme.colors.background.secondary,
-      borderRadius: theme.shape.radius.pill,
-      color: theme.colors.text.primary,
-      display: 'inline-block',
-      fontSize: '0.85em',
-      fontWeight: 500,
-      lineHeight: 1.4,
-      marginInline: '0.25rem',
-      padding: '0 6px',
-      verticalAlign: 'middle',
-    }),
+    summaryCountBadge: cx(
+      getSummaryCountBadgeStyle(theme),
+      css({ label: 'SpanDetailSummaryCountBadge', marginInline: '0.25rem' })
+    ),
     summaryLabel: css({
       label: 'SpanDetailSummaryLabel',
       color: theme.colors.text.secondary,
