@@ -22,6 +22,13 @@ jest.mock('react-use/lib/useMeasure', () => ({
   default: () => [jest.fn(), { width: mockMeasuredWidth }],
 }));
 
+// SpanDetailLinkButtons resolves data source settings via an async hook; return a
+// synchronous value so rendering doesn't trigger an un-acted state update in tests.
+jest.mock('@grafana/runtime/unstable', () => ({
+  ...jest.requireActual('@grafana/runtime/unstable'),
+  useDataSourceInstanceSettings: jest.fn().mockReturnValue({ isLoading: false, settings: undefined }),
+}));
+
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -314,6 +321,17 @@ describe('<SpanDetail>', () => {
     it('shows the aggregated span count', () => {
       render(<SpanDetail {...(summaryProps as unknown as SpanDetailProps)} />);
       expect(screen.getByLabelText('3 aggregated spans')).toBeInTheDocument();
+    });
+
+    it('hides the count badge when the span count is zero', () => {
+      const zeroCount = { ...summarySpan.aggregation, spanCount: 0 };
+      render(
+        <SpanDetail
+          {...({ ...summaryProps, span: { ...summarySpan, aggregation: zeroCount } } as unknown as SpanDetailProps)}
+        />
+      );
+      expect(screen.getByText('(summary)')).toBeInTheDocument();
+      expect(screen.queryByLabelText(/aggregated span/)).not.toBeInTheDocument();
     });
 
     it('shows min, median and max in the duration overview item', () => {

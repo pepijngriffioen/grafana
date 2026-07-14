@@ -44,14 +44,15 @@ import { type SpanLinkFunc } from '../../types/links';
 import { type TraceProcess, type TraceSpan, type TraceSpanReference } from '../../types/trace';
 import { formatDuration } from '../../utils/date';
 import { getServiceDisplayName } from '../../utils/service-name';
-import { getSummaryDurationStats, partitionAggregationTags } from '../../utils/summary-span';
+import { getSummaryCountBadgeStyle, getSummaryDurationStats, partitionAggregationTags } from '../../utils/summary-span';
 
 import AccordianKeyValues from './AccordianKeyValues';
 import AccordianLogs from './AccordianLogs';
 import AccordianReferences from './AccordianReferences';
+import AccordionCategorizedKeyValues from './AccordionCategorizedKeyValues';
 import type DetailState from './DetailState';
 import { ShareSpanButton } from './ShareSpanButton';
-import { getSpanDetailLinkButtons } from './SpanDetailLinkButtons';
+import { SpanDetailLinkButtons } from './SpanDetailLinkButtons';
 import SpanFlameGraph from './SpanFlameGraph';
 
 const useResourceAttributesExtensionLinks = ({
@@ -187,19 +188,10 @@ const getStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
       flexShrink: 0,
     }),
-    summaryCountBadge: css({
-      label: 'SpanDetailSummaryCountBadge',
-      background: theme.colors.background.secondary,
-      borderRadius: theme.shape.radius.pill,
-      color: theme.colors.text.primary,
-      display: 'inline-block',
-      fontSize: '0.85em',
-      fontWeight: 500,
-      lineHeight: 1.4,
-      marginInline: '0.25rem',
-      padding: '0 6px',
-      verticalAlign: 'middle',
-    }),
+    summaryCountBadge: cx(
+      getSummaryCountBadgeStyle(theme),
+      css({ label: 'SpanDetailSummaryCountBadge', marginInline: '0.25rem' })
+    ),
     summaryLabel: css({
       label: 'SpanDetailSummaryLabel',
       color: theme.colors.text.secondary,
@@ -465,16 +457,6 @@ export default function SpanDetail(props: SpanDetailProps) {
     spanStartTime: startTime,
   });
 
-  const linksComponent = getSpanDetailLinkButtons({
-    span,
-    createSpanLink,
-    datasourceType,
-    traceToProfilesOptions,
-    timeRange,
-    app,
-    shareButton: <ShareSpanButton focusSpanLink={focusSpanLink} />,
-  });
-
   const listOfContentCards = [];
 
   if (isSummarySpan && aggregationTags.length > 0) {
@@ -490,8 +472,9 @@ export default function SpanDetail(props: SpanDetailProps) {
   }
 
   listOfContentCards.push(
-    <AccordianKeyValues
+    <AccordionCategorizedKeyValues
       data={otherTags}
+      sectionType="span"
       label={t('explore.span-detail.label-span-attributes', 'Span attributes')}
       isOpen={isTagsOpen}
       linksGetter={resourceLinksGetter}
@@ -501,8 +484,9 @@ export default function SpanDetail(props: SpanDetailProps) {
 
   if (process.tags) {
     listOfContentCards.push(
-      <AccordianKeyValues
+      <AccordionCategorizedKeyValues
         data={process.tags}
+        sectionType="resource"
         label={
           isSummarySpan ? (
             <>
@@ -608,7 +592,7 @@ export default function SpanDetail(props: SpanDetailProps) {
           </h6>
           {isSummarySpan && (
             <span className={styles.summaryHeader}>
-              {span.aggregation?.spanCount !== undefined && (
+              {span.aggregation && (span.aggregation.spanCount ?? 0) > 0 && (
                 <span
                   className={styles.summaryCountBadge}
                   style={color ? { background: color, color: theme.colors.getContrastText(color) } : undefined}
@@ -624,7 +608,16 @@ export default function SpanDetail(props: SpanDetailProps) {
               <span className={styles.summaryLabel}>{t('explore.span-detail.summary-label', '(summary)')}</span>
             </span>
           )}
-          {linksComponent}
+          <SpanDetailLinkButtons
+            span={span}
+            createSpanLink={createSpanLink}
+            datasourceType={datasourceType}
+            datasourceUid={datasourceUid}
+            traceToProfilesOptions={traceToProfilesOptions}
+            timeRange={timeRange}
+            app={app}
+            shareButton={<ShareSpanButton focusSpanLink={focusSpanLink} />}
+          />
         </div>
         <div className={styles.listWrapper}>
           <LabeledList className={styles.list} divider={false} items={overviewItems} color={color} />
