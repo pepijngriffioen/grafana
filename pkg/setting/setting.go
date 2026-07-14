@@ -1901,7 +1901,7 @@ func (cfg *Cfg) readSessionConfig() {
 }
 
 func (cfg *Cfg) readStartupParams(iniFile *ini.File) {
-	cfg.EnableKubernetesLibraryPanels = iniFile.Section("library_params").Key("enbale_kubernetes_library_panels").MustBool(false)
+	cfg.EnableKubernetesLibraryPanels = iniFile.Section("library_params").Key("enable_kubernetes_library_panels").MustBool(false)
 
 	cfg.EnableKubernetesAggregator = iniFile.Section("grafana-apiserver").Key("kubernetes_aggregator_enabled").MustBool(false)
 	cfg.EnableKubernetesAggregatorCapTokenAuth = iniFile.Section("grafana-apiserver").Key("kubernetes_aggregator_cap_token_auth_enabled").MustBool(false)
