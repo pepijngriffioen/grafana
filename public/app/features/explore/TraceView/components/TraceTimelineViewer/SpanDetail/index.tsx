@@ -348,7 +348,7 @@ export default function SpanDetail(props: SpanDetailProps) {
   const isSummarySpan = span.aggregation?.isSummary === true;
   const summaryDurationStats = isSummarySpan && span.aggregation ? getSummaryDurationStats(span.aggregation) : null;
   const durationValue = summaryDurationStats
-    ? summaryDurationStats.map((stat) => `${stat.value} (${stat.label.toLocaleLowerCase()})`).join(' | ')
+    ? summaryDurationStats.map((stat) => `${stat.value} (${stat.labelLower})`).join(' | ')
     : formatDuration(duration);
 
   let overviewItems = [
