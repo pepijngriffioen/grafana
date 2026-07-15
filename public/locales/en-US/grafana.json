@@ -8843,8 +8843,11 @@
     },
     "summary-span": {
       "stat-max": "Max",
+      "stat-max-lower": "max",
       "stat-median": "Median",
-      "stat-min": "Min"
+      "stat-median-lower": "median",
+      "stat-min": "Min",
+      "stat-min-lower": "min"
     },
     "supplementary-result-error": {
       "show-details": "Show details"

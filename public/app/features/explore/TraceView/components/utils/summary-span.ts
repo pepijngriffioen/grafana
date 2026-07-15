@@ -51,6 +51,10 @@ export const getSummaryCountBadgeStyle = (theme: GrafanaTheme2) =>
 
 export interface SummaryDurationStat {
   label: string;
+  // Lower-case label sourced from its own translation, for contexts that render
+  // the stat inline (e.g. SpanDetail). Casing is authored per-locale in i18n
+  // rather than forced in code, which is not locale-aware for translated text.
+  labelLower: string;
   value: string;
 }
 
@@ -71,14 +75,23 @@ export function getSummaryDurationStats(aggregation: SpanAggregation): SummaryDu
   }
 
   const stats: SummaryDurationStat[] = [
-    { label: t('explore.summary-span.stat-min', 'Min'), value: formatDuration(durationMinNs / 1000) },
+    {
+      label: t('explore.summary-span.stat-min', 'Min'),
+      labelLower: t('explore.summary-span.stat-min-lower', 'min'),
+      value: formatDuration(durationMinNs / 1000),
+    },
   ];
   if (durationMedianNs !== undefined) {
     stats.push({
       label: t('explore.summary-span.stat-median', 'Median'),
+      labelLower: t('explore.summary-span.stat-median-lower', 'median'),
       value: formatDuration(durationMedianNs / 1000),
     });
   }
-  stats.push({ label: t('explore.summary-span.stat-max', 'Max'), value: formatDuration(durationMaxNs / 1000) });
+  stats.push({
+    label: t('explore.summary-span.stat-max', 'Max'),
+    labelLower: t('explore.summary-span.stat-max-lower', 'max'),
+    value: formatDuration(durationMaxNs / 1000),
+  });
   return stats;
 }
